@@ -125,6 +125,25 @@ namespace MediaBrowser.Controller.Entities.Movies
                 return items;
             }
 
+            if (sortBy == ItemSortBy.DateCreated)
+            {
+                // "Date Modified" collection display order: match UserViewManager.GetItemsForLatestItems'
+                // exact multi-key sort (DateCreated, then SortName, then ProductionYear as tiebreakers,
+                // all descending) so a collection's own sort agrees with its "Recently Added" home-screen
+                // row. LibraryManager.Sort's single-key overload falls back to a stable sort for ties -
+                // i.e. whatever arbitrary order the underlying query happened to enumerate items in -
+                // which looked like "some other metric" whenever several members shared a DateCreated.
+                return LibraryManager.Sort(
+                    items,
+                    user,
+                    [
+                        (ItemSortBy.DateCreated, SortOrder.Descending),
+                        (ItemSortBy.SortName, SortOrder.Descending),
+                        (ItemSortBy.ProductionYear, SortOrder.Descending)
+                    ]);
+            }
+
+            // Every other display order (PremiereDate, SortName, etc.) keeps the normal ascending direction.
             return LibraryManager.Sort(items, user, new[] { sortBy }, SortOrder.Ascending);
         }
 
