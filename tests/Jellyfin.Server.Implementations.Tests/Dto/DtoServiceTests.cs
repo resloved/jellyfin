@@ -11,7 +11,6 @@ using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Controller.Trickplay;
 using MediaBrowser.Model.Entities;
-using MediaBrowser.Model.Querying;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -57,63 +56,57 @@ public class DtoServiceTests
     }
 
     [Fact]
-    public void GetBaseItemDto_Episode_AttachesSeasonPosterAsParentPrimaryImage()
+    public void GetBaseItemDto_PreferEpisodeParentPoster_PrefersSeasonPosterOverEpisodeAndSeries()
     {
-        var (episode, season, _) = BuildEpisode(seasonHasPoster: true);
-        var options = new DtoOptions(false) { Fields = [ItemFields.PrimaryImageAspectRatio] };
+        var (episode, season, series) = BuildEpisode(seasonHasPoster: true);
+        var options = new DtoOptions(false) { PreferEpisodeParentPoster = true };
 
         var dto = _dtoService.GetBaseItemDto(episode, options);
 
-        // The season poster is attached additively; the episode keeps its own primary and 16:9 ratio,
-        // and clients decide per view whether to prefer the parent/series poster over the episode still.
-        Assert.NotNull(dto.ImageTags);
-        Assert.True(dto.ImageTags.ContainsKey(ImageType.Primary));
-        Assert.NotNull(dto.SeriesPrimaryImageTag);
+        // The episode's own 16:9 primary is dropped in favor of the season's portrait poster.
+        Assert.False(dto.ImageTags is not null && dto.ImageTags.ContainsKey(ImageType.Primary));
+        Assert.Null(dto.SeriesPrimaryImageTag);
         Assert.Equal(season.Id, dto.ParentPrimaryImageItemId);
         Assert.Equal("tag:" + season.GetImageInfo(ImageType.Primary, 0)!.Path, dto.ParentPrimaryImageTag);
-        // Aspect ratio stays the episode's own image, not the poster's.
-        Assert.Equal(episode.GetDefaultPrimaryImageAspectRatio(), dto.PrimaryImageAspectRatio);
+        // Aspect ratio follows the (portrait) poster, not the episode's 16:9 image.
+        Assert.Equal(season.GetDefaultPrimaryImageAspectRatio(), dto.PrimaryImageAspectRatio);
     }
 
     [Fact]
-    public void GetBaseItemDto_Episode_ParentPrimaryImageFallsBackToSeriesWhenSeasonHasNoPoster()
+    public void GetBaseItemDto_PreferEpisodeParentPoster_FallsBackToSeriesWhenSeasonHasNoPoster()
     {
         var (episode, _, series) = BuildEpisode(seasonHasPoster: false);
-        var options = new DtoOptions(false);
+        var options = new DtoOptions(false) { PreferEpisodeParentPoster = true };
 
         var dto = _dtoService.GetBaseItemDto(episode, options);
 
-        // Episode image is retained; ParentPrimaryImage falls back to the series poster.
-        Assert.NotNull(dto.ImageTags);
-        Assert.True(dto.ImageTags.ContainsKey(ImageType.Primary));
-        Assert.NotNull(dto.SeriesPrimaryImageTag);
+        Assert.False(dto.ImageTags is not null && dto.ImageTags.ContainsKey(ImageType.Primary));
+        Assert.Null(dto.SeriesPrimaryImageTag);
         Assert.Equal(series.Id, dto.ParentPrimaryImageItemId);
         Assert.Equal("tag:" + series.GetImageInfo(ImageType.Primary, 0)!.Path, dto.ParentPrimaryImageTag);
     }
 
     [Fact]
-    public void GetBaseItemDto_Episode_WithoutParentPosters_KeepsOnlyEpisodePrimary()
+    public void GetBaseItemDto_WithoutPreferEpisodeParentPoster_KeepsEpisodePrimary()
     {
-        var (episode, _, _) = BuildEpisode(seasonHasPoster: false, seriesHasPoster: false);
+        var (episode, _, _) = BuildEpisode(seasonHasPoster: true);
         var options = new DtoOptions(false);
 
         var dto = _dtoService.GetBaseItemDto(episode, options);
 
-        // With no season or series poster there is nothing to attach; the episode keeps its own primary.
+        // Default behavior: the episode keeps its own primary and exposes the series poster as a tag.
         Assert.NotNull(dto.ImageTags);
         Assert.True(dto.ImageTags.ContainsKey(ImageType.Primary));
+        Assert.NotNull(dto.SeriesPrimaryImageTag);
         Assert.Null(dto.ParentPrimaryImageItemId);
     }
 
-    private (Episode Episode, Season Season, Series Series) BuildEpisode(bool seasonHasPoster, bool seriesHasPoster = true)
+    private (Episode Episode, Season Season, Series Series) BuildEpisode(bool seasonHasPoster)
     {
         // Non-local (http) paths keep aspect-ratio resolution off the image processor and on the
         // item's default ratio, which is portrait (2/3) for Season/Series and 16:9 for Episode.
         var series = new Series { Id = Guid.NewGuid(), Name = "Series" };
-        if (seriesHasPoster)
-        {
-            series.SetImage(new ItemImageInfo { Type = ImageType.Primary, Path = "http://test/series.jpg" }, 0);
-        }
+        series.SetImage(new ItemImageInfo { Type = ImageType.Primary, Path = "http://test/series.jpg" }, 0);
 
         var season = new Season { Id = Guid.NewGuid(), Name = "Season", SeriesId = series.Id };
         if (seasonHasPoster)
