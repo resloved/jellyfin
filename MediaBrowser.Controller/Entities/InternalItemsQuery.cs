@@ -236,6 +236,13 @@ namespace MediaBrowser.Controller.Entities
 
         public bool? UseRawName { get; set; }
 
+        /// <summary>
+        /// Gets or sets a value indicating whether BoxSets matching JELLYFIN_OWN_WATCHLIST_NAME_TEMPLATE's
+        /// prefix/suffix should be excluded. Hides every user's auto-generated watchlist collection from a
+        /// flat top-level Collections listing; users reach their own via the home-screen pin instead.
+        /// </summary>
+        public bool ExcludeOwnWatchlistBoxSets { get; set; }
+
         public string? Person { get; set; }
 
         public Guid[] PersonIds { get; set; }
