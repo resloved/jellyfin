@@ -125,7 +125,12 @@ namespace MediaBrowser.Controller.Entities.Movies
                 return items;
             }
 
-            return LibraryManager.Sort(items, user, new[] { sortBy }, SortOrder.Ascending);
+            // The "Date Modified" collection display order (DisplayOrder="DateCreated") is
+            // inverted so the most recently added member shows first. Every other display
+            // order (PremiereDate, SortName, etc.) keeps the normal ascending direction.
+            var sortOrder = sortBy == ItemSortBy.DateCreated ? SortOrder.Descending : SortOrder.Ascending;
+
+            return LibraryManager.Sort(items, user, new[] { sortBy }, sortOrder);
         }
 
         public override IReadOnlyList<BaseItem> GetChildren(User user, bool includeLinkedChildren, InternalItemsQuery query)
