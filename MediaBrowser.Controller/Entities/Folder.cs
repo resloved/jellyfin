@@ -931,6 +931,19 @@ namespace MediaBrowser.Controller.Entities
                 query.Parent = this;
             }
 
+            // Nested collections (BoxSets manually linked as a child of another BoxSet) are still direct
+            // DB children of the "collections" library folder — nesting is purely a LinkedChildren
+            // relationship, not a reparenting. Hide them from a flat listing of the top-level Collections
+            // view. This only fires when browsing the Collections special view itself: BoxSet and
+            // CollectionFolder are sibling classes, so browsing into an individual collection can never
+            // satisfy this check.
+            if (this is CollectionFolder { CollectionType: CollectionType.boxsets }
+                && query.IncludeItemTypes.Length == 1
+                && query.IncludeItemTypes[0] == BaseItemKind.BoxSet)
+            {
+                query.ExcludeItemsWithBoxSetParent = true;
+            }
+
             // BoxSets and Playlists can have per-user visibility (shares/open access) that is stored in the
             // serialized item data and cannot be evaluated by the database query, so filter them in memory.
             if (query.IncludeItemTypes.Length > 0
