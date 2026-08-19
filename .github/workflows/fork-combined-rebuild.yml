@@ -1,0 +1,51 @@
+name: Fork Combined Rebuild
+
+# Rebuilds the `combined` branch fresh from fork-base + a merge of every
+# patch/** branch, every time a patch branch is pushed. `combined` is
+# force-pushed intentionally: it's a disposable, bot-owned integration
+# branch that nothing else derives from, so rebuilding it from scratch
+# each run avoids accumulating merge-commit history/drift. The push to
+# combined this produces is what triggers fork-build.yml to publish the
+# combined image.
+#
+# Patch branches are discovered dynamically (origin/patch/*), so adding a
+# new patch branch is picked up automatically with no edits here.
+#
+# If two patches conflict, this job fails loudly rather than silently
+# producing a broken combined branch — resolve manually (rebase the
+# conflicting patch branch, or merge combined by hand and push it).
+
+on:
+  push:
+    branches:
+      - 'patch/**'
+  workflow_dispatch:
+
+concurrency:
+  group: fork-combined-rebuild
+  cancel-in-progress: true
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rebuild combined branch from fork-base + all patch branches
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B combined origin/fork-base
+          for branch in $(git branch -r | grep 'origin/patch/' | sed 's#.*origin/##'); do
+            echo "Merging $branch into combined"
+            git merge --no-edit "origin/$branch" || {
+              echo "::error::Merge conflict merging $branch into combined — resolve manually."
+              exit 1
+            }
+          done
+          git push origin combined --force

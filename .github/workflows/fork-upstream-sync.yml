@@ -1,0 +1,56 @@
+name: Fork Upstream Sync
+
+# Manual-only. Do NOT re-add a schedule trigger.
+#
+# Incident (2026-08-18): this branch was built from upstream master HEAD
+# instead of a stable release tag. Jellyfin auto-applies pending EF Core
+# migrations against the live SQLite DB at startup with no prompt and no
+# way to opt out. Master carries migrations that haven't shipped in any
+# release yet (e.g. 20260113233500_DropExtraIdsColumn.cs), so the first
+# boot of that build silently forward-migrated production data past what
+# jellyfin/jellyfin:latest's compiled model expects. That's a one-way
+# door: switching the image tag back to the official release afterwards
+# does not undo it, and there was no backup. See jellyfin-fork-brief.md
+# ("Incident: unreleased migration" section) for the full account.
+#
+# fork-base is pinned to a fixed commit deliberately (see the brief for
+# which one). Merging upstream/master again means pulling in more
+# migrations of unknown reversibility. Before ever running this workflow:
+#   1. Take a fresh backup of /config/data/jellyfin.db on the deployment.
+#   2. Review what's actually in the upstream diff, especially anything
+#      under src/Jellyfin.Database/**/Migrations.
+#   3. Only then run it manually (workflow_dispatch) and merge the
+#      resulting PR deliberately, then rebase each patch/** branch onto
+#      the updated fork-base and re-verify.
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout fork-base
+        uses: actions/checkout@v4
+        with:
+          ref: fork-base
+          fetch-depth: 0
+
+      - name: Merge upstream/master
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/jellyfin/jellyfin.git
+          git fetch upstream master
+          git merge upstream/master --no-edit
+
+      - name: Open PR with merged changes
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: sync/upstream-master
+          base: fork-base
+          title: "Sync upstream master into fork-base"
+          commit-message: "Merge upstream/master"
+          body: Automated merge of jellyfin/jellyfin master. Review before merging in case any patch/** branch needs adjusting, and rebase each patch branch onto the updated fork-base afterward.
