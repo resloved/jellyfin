@@ -112,6 +112,7 @@ namespace Jellyfin.Server
             _logger.LogInformation(
                 "Jellyfin version: {Version}",
                 Assembly.GetEntryAssembly()!.GetName().Version!.ToString(3));
+            _logger.LogInformation("Fork build: reverse-collection-datemodified");
 
             StartupHelpers.LogEnvironmentInfo(_logger, appPaths);
 

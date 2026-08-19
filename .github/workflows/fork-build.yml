@@ -1,0 +1,46 @@
+name: Fork Build
+
+# Builds the reverse-collection-datemodified patch as a layered image on top
+# of the official jellyfin/jellyfin base and publishes it to GHCR. See
+# jellyfin-fork-brief.md for the full plan.
+
+on:
+  push:
+    branches:
+      - reverse-collection-datemodified
+  workflow_dispatch:
+
+concurrency:
+  group: fork-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/fork/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/jellyfin:reverse-datemod
+            ghcr.io/${{ github.repository_owner }}/jellyfin:reverse-datemod-${{ github.sha }}

@@ -1,0 +1,42 @@
+name: Fork Upstream Sync
+
+# Periodically merges jellyfin/jellyfin's master into our patch branch and
+# opens a PR for review, instead of force-pushing a rebase. If upstream
+# conflicts with the patch, the job fails loudly and the merge must be done
+# by hand (rebase reverse-collection-datemodified onto upstream/master
+# locally, resolve, force-push).
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout patch branch
+        uses: actions/checkout@v4
+        with:
+          ref: reverse-collection-datemodified
+          fetch-depth: 0
+
+      - name: Merge upstream/master
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/jellyfin/jellyfin.git
+          git fetch upstream master
+          git merge upstream/master --no-edit
+
+      - name: Open PR with merged changes
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: sync/upstream-master
+          base: reverse-collection-datemodified
+          title: "Sync upstream master into reverse-collection-datemodified"
+          commit-message: "Merge upstream/master"
+          body: Automated merge of jellyfin/jellyfin master. Review before merging in case the patch needs adjusting.
