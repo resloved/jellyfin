@@ -158,13 +158,20 @@ namespace Emby.Server.Implementations.Library
                 // pegged CPU, no exception, /UserViews hanging indefinitely in production). The
                 // IsVisibleStandalone(user) check below already covers per-user visibility, so
                 // query-level user scoping isn't needed for correctness here.
+                // DtoOptions(false) keeps this lightweight (skips populating metadata fields this
+                // narrow lookup doesn't need), but deliberately does NOT disable EnableImages: this
+                // resolved item is added directly into list below and flows into the actual home
+                // screen response, so its image data needs to be loaded, unlike a pure existence
+                // check. (EnableImages=true is DtoOptions' default regardless of the allFields ctor
+                // arg - explicitly turning it off here was the bug: the pinned tile had no thumbnail
+                // on clients that rely on ImageTags being present in the Views response, e.g. web.)
                 var watchlist = _libraryManager.GetItemList(new InternalItemsQuery
                 {
                     IncludeItemTypes = [BaseItemKind.BoxSet],
                     Name = watchlistName,
                     OrderBy = [(ItemSortBy.SortName, SortOrder.Ascending)],
                     EnableTotalRecordCount = false,
-                    DtoOptions = new DtoOptions(false) { EnableImages = false }
+                    DtoOptions = new DtoOptions(false)
                 }).OfType<Folder>().FirstOrDefault(i => i.IsVisibleStandalone(user));
 
                 if (watchlist is not null && !list.Any(i => i.Id.Equals(watchlist.Id)))

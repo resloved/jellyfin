@@ -429,18 +429,19 @@ public sealed partial class BaseItemRepository
             // Collections browse. Prefix/suffix are pre-cleaned via OwnWatchlistNameTemplate's sentinel-split
             // (see that file) so this agrees with the per-user exact-match lookup in UserViewManager on what
             // counts as "this user's watchlist," even after diacritic/punctuation folding.
+            //
+            // Excluding is the whole point here, so this must be a single negated "matches the full
+            // pattern" check, not two independently negated Where() calls chained together - two
+            // separate !StartsWith && !EndsWith clauses is !(A) && !(B), not the intended !(A && B)
+            // (De Morgan's law), and would wrongly exclude an item that matches only one half of a
+            // template that has both a prefix and a suffix. With this template's actual empty prefix
+            // it happens to reduce to a plain !EndsWith, but built generally in case that ever changes.
             var cleanPrefix = OwnWatchlistNameTemplate.CleanPrefix;
             var cleanSuffix = OwnWatchlistNameTemplate.CleanSuffix;
 
-            if (!string.IsNullOrEmpty(cleanPrefix))
-            {
-                baseQuery = baseQuery.Where(e => e.CleanName!.StartsWith(cleanPrefix));
-            }
-
-            if (!string.IsNullOrEmpty(cleanSuffix))
-            {
-                baseQuery = baseQuery.Where(e => e.CleanName!.EndsWith(cleanSuffix));
-            }
+            baseQuery = baseQuery.Where(e =>
+                !((string.IsNullOrEmpty(cleanPrefix) || e.CleanName!.StartsWith(cleanPrefix))
+                    && (string.IsNullOrEmpty(cleanSuffix) || e.CleanName!.EndsWith(cleanSuffix))));
         }
 
         // When box set collapsing is active, defer name-range filters to after the collapse.
