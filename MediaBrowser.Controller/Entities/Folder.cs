@@ -918,6 +918,19 @@ namespace MediaBrowser.Controller.Entities
 
         public QueryResult<BaseItem> QueryRecursive(InternalItemsQuery query)
         {
+            // Hides each user's auto-generated watchlist BoxSet from the general top-level Collections
+            // browse when JELLYFIN_OWN_WATCHLIST_NAME_TEMPLATE is configured - the owner reaches their own
+            // watchlist via the home-screen pin (UserViewManager.GetUserViews) instead. Same "top-level
+            // Collections special view only" gate as the nested-collections hide behavior; kept as an
+            // independent flag/block (rather than extending that one) so the two patches' diffs don't collide.
+            if (OwnWatchlistNameTemplate.IsConfigured
+                && this is CollectionFolder { CollectionType: CollectionType.boxsets }
+                && query.IncludeItemTypes.Length == 1
+                && query.IncludeItemTypes[0] == BaseItemKind.BoxSet)
+            {
+                query.ExcludeOwnWatchlistBoxSets = true;
+            }
+
             if (!query.ForceDirect && CollapseBoxSetItems(query, this, query.User, ConfigurationManager))
             {
                 query.CollapseBoxSetItems = true;

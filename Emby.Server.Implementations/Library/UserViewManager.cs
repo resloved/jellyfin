@@ -138,6 +138,33 @@ namespace Emby.Server.Implementations.Library
                 list = list.Where(i => !user.GetPreferenceValues<Guid>(PreferenceKind.MyMediaExcludes).Contains(i.Id)).ToList();
             }
 
+            // JELLYFIN_OWN_WATCHLIST_NAME_TEMPLATE: pin the requesting user's own auto-generated watchlist
+            // BoxSet onto their home screen. Computed per-request from this user's own username - genuinely
+            // per-user, unlike JELLYFIN_PINNED_VIEWS' fixed id list. InternalItemsQuery.Name matches via
+            // CleanName equality, agreeing with the hide-filter in BaseItemRepository.TranslateQuery.cs on
+            // what counts as "this user's watchlist." Placed after the MyMediaExcludes filter (rather than
+            // alongside JELLYFIN_PINNED_VIEWS' splice before it) so the two patches' insertions don't land on
+            // the same lines when both merge into combined - the trade-off is a user can't hide their own
+            // watchlist tile via the MyMediaExcludes preference. Flows through the normal sort below like any
+            // other item; no special-cased ordering.
+            var watchlistName = OwnWatchlistNameTemplate.GetNameForUser(user.Username);
+            if (watchlistName is not null)
+            {
+                var watchlist = _libraryManager.GetItemList(new InternalItemsQuery(user)
+                {
+                    IncludeItemTypes = [BaseItemKind.BoxSet],
+                    Name = watchlistName,
+                    OrderBy = [(ItemSortBy.SortName, SortOrder.Ascending)],
+                    EnableTotalRecordCount = false,
+                    DtoOptions = new DtoOptions(false) { EnableImages = false }
+                }).OfType<Folder>().FirstOrDefault(i => i.IsVisibleStandalone(user));
+
+                if (watchlist is not null && !list.Any(i => i.Id.Equals(watchlist.Id)))
+                {
+                    list.Add(watchlist);
+                }
+            }
+
             var sorted = _libraryManager.Sort(list, user, [ItemSortBy.SortName], SortOrder.Ascending).ToList();
             var orders = user.GetPreferenceValues<Guid>(PreferenceKind.OrderedViews);
 

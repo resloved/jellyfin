@@ -423,6 +423,26 @@ public sealed partial class BaseItemRepository
             }
         }
 
+        if (filter.ExcludeOwnWatchlistBoxSets)
+        {
+            // Hide each user's auto-generated watchlist BoxSet ("{username}'s Watchlist") from the general
+            // Collections browse. Prefix/suffix are pre-cleaned via OwnWatchlistNameTemplate's sentinel-split
+            // (see that file) so this agrees with the per-user exact-match lookup in UserViewManager on what
+            // counts as "this user's watchlist," even after diacritic/punctuation folding.
+            var cleanPrefix = OwnWatchlistNameTemplate.CleanPrefix;
+            var cleanSuffix = OwnWatchlistNameTemplate.CleanSuffix;
+
+            if (!string.IsNullOrEmpty(cleanPrefix))
+            {
+                baseQuery = baseQuery.Where(e => e.CleanName!.StartsWith(cleanPrefix));
+            }
+
+            if (!string.IsNullOrEmpty(cleanSuffix))
+            {
+                baseQuery = baseQuery.Where(e => e.CleanName!.EndsWith(cleanSuffix));
+            }
+        }
+
         // When box set collapsing is active, defer name-range filters to after the collapse.
         // Otherwise, items are filtered by their own name but then collapsed into a BoxSet
         // whose name may fall in a different range (e.g. "21 Jump Street" is under "#"
