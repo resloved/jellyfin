@@ -3,6 +3,7 @@
 #pragma warning disable CS1591
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -21,6 +22,7 @@ using MediaBrowser.Model.Channels;
 using MediaBrowser.Model.Globalization;
 using MediaBrowser.Model.Library;
 using MediaBrowser.Model.Querying;
+using Microsoft.Extensions.Logging;
 
 namespace Emby.Server.Implementations.Library
 {
@@ -32,14 +34,43 @@ namespace Emby.Server.Implementations.Library
         private readonly IChannelManager _channelManager;
         private readonly ILiveTvManager _liveTvManager;
         private readonly IServerConfigurationManager _config;
+        private readonly ILogger<UserViewManager> _logger;
+        private readonly ConcurrentDictionary<Guid, byte> _loggedUnresolvedPinnedViews = new();
 
-        public UserViewManager(ILibraryManager libraryManager, ILocalizationManager localizationManager, IChannelManager channelManager, ILiveTvManager liveTvManager, IServerConfigurationManager config)
+        // JELLYFIN_PINNED_VIEWS: comma-separated ids of Folder-derived items (collections, series,
+        // music albums/artists, playlists) to splice into the home screen's library-tiles response
+        // alongside the user's actual libraries. Parsed once - static field initializers are
+        // CLR-guaranteed to run exactly once, thread-safe, no DI ceremony needed for a single-file setting.
+        private static readonly Guid[] _pinnedViewIds = ParsePinnedViewIds();
+
+        public UserViewManager(ILibraryManager libraryManager, ILocalizationManager localizationManager, IChannelManager channelManager, ILiveTvManager liveTvManager, IServerConfigurationManager config, ILogger<UserViewManager> logger)
         {
             _libraryManager = libraryManager;
             _localizationManager = localizationManager;
             _channelManager = channelManager;
             _liveTvManager = liveTvManager;
             _config = config;
+            _logger = logger;
+        }
+
+        private static Guid[] ParsePinnedViewIds()
+        {
+            var raw = Environment.GetEnvironmentVariable("JELLYFIN_PINNED_VIEWS");
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return Array.Empty<Guid>();
+            }
+
+            var ids = new List<Guid>();
+            foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (Guid.TryParse(part, out var id))
+                {
+                    ids.Add(id);
+                }
+            }
+
+            return ids.ToArray();
         }
 
         public Folder[] GetUserViews(UserViewQuery query)
@@ -131,6 +162,35 @@ namespace Emby.Server.Implementations.Library
                 {
                     list.Add(_liveTvManager.GetInternalLiveTvFolder(CancellationToken.None));
                 }
+            }
+
+            foreach (var pinnedId in _pinnedViewIds)
+            {
+                if (list.Any(i => i.Id.Equals(pinnedId)))
+                {
+                    continue; // already present; keep idempotent
+                }
+
+                var pinnedItem = _libraryManager.GetItemById<Folder>(pinnedId);
+                if (pinnedItem is null)
+                {
+                    if (_loggedUnresolvedPinnedViews.TryAdd(pinnedId, 0))
+                    {
+                        _logger.LogWarning(
+                            "JELLYFIN_PINNED_VIEWS references {Id}, which does not resolve to a pinnable item (must be a " +
+                            "collection, series, music album/artist, or playlist); skipping",
+                            pinnedId);
+                    }
+
+                    continue;
+                }
+
+                if (!pinnedItem.IsVisibleStandalone(user))
+                {
+                    continue;
+                }
+
+                list.Add(pinnedItem);
             }
 
             if (!query.IncludeHidden)
