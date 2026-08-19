@@ -368,6 +368,13 @@ namespace MediaBrowser.Controller.Entities
         /// </summary>
         public Guid[] LinkedChildAncestorIds { get; set; }
 
+        /// <summary>
+        /// Gets or sets a value indicating whether items that are a manually-linked child of another
+        /// BoxSet should be excluded. Hides nested collections from a flat top-level listing while
+        /// still showing them when querying the parent BoxSet's own contents directly.
+        /// </summary>
+        public bool ExcludeItemsWithBoxSetParent { get; set; }
+
         public Guid[] TopParentIds { get; set; }
 
         public CollectionType?[] PresetViews { get; set; }

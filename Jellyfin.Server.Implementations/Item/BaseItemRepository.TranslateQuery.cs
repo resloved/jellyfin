@@ -1003,6 +1003,18 @@ public sealed partial class BaseItemRepository
                 && lc.Child!.Parents!.Any(a => linkedChildAncestorIds.Contains(a.ParentItemId))));
         }
 
+        if (filter.ExcludeItemsWithBoxSetParent)
+        {
+            // Hide nested collections: exclude any BoxSet that is a manually-linked child of another
+            // BoxSet. Single correlated NOT EXISTS against LinkedChildren, backed by its existing
+            // (ChildId, ChildType) index - no per-item lookups.
+            var boxSetTypeName = _itemTypeLookup.BaseItemKindNames[BaseItemKind.BoxSet];
+            baseQuery = baseQuery.Where(e => !context.LinkedChildren.Any(lc =>
+                lc.ChildId == e.Id
+                && lc.ChildType == Database.Implementations.Entities.LinkedChildType.Manual
+                && context.BaseItems.Any(bs => bs.Id == lc.ParentId && bs.Type == boxSetTypeName)));
+        }
+
         if (!string.IsNullOrWhiteSpace(filter.AncestorWithPresentationUniqueKey))
         {
             baseQuery = baseQuery
