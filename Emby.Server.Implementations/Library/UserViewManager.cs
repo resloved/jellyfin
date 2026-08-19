@@ -150,7 +150,15 @@ namespace Emby.Server.Implementations.Library
             var watchlistName = OwnWatchlistNameTemplate.GetNameForUser(user.Username);
             if (watchlistName is not null)
             {
-                var watchlist = _libraryManager.GetItemList(new InternalItemsQuery(user)
+                // Deliberately NOT new InternalItemsQuery(user) here: passing a User with none of
+                // ParentId/AncestorIds/TopParentIds/ItemIds/etc. set makes
+                // LibraryManager.GetItemList's AddUserToQuery treat this as an unscoped
+                // library-wide search and call UserViewManager.GetUserViews to compute scoping -
+                // which is this exact method, causing unbounded recursion (confirmed the hard way:
+                // pegged CPU, no exception, /UserViews hanging indefinitely in production). The
+                // IsVisibleStandalone(user) check below already covers per-user visibility, so
+                // query-level user scoping isn't needed for correctness here.
+                var watchlist = _libraryManager.GetItemList(new InternalItemsQuery
                 {
                     IncludeItemTypes = [BaseItemKind.BoxSet],
                     Name = watchlistName,
