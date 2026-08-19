@@ -4,9 +4,14 @@ name: Fork Combined Rebuild
 # patch/** branch, every time a patch branch is pushed. `combined` is
 # force-pushed intentionally: it's a disposable, bot-owned integration
 # branch that nothing else derives from, so rebuilding it from scratch
-# each run avoids accumulating merge-commit history/drift. The push to
-# combined this produces is what triggers fork-build.yml to publish the
-# combined image.
+# each run avoids accumulating merge-commit history/drift.
+#
+# IMPORTANT: pushing with the default GITHUB_TOKEN does NOT trigger other
+# on:push workflows (GitHub's anti-recursion rule) - confirmed the hard
+# way: the first run of this workflow pushed `combined` successfully but
+# fork-build.yml never fired for it. So this workflow explicitly
+# dispatches fork-build.yml itself at the end instead of relying on the
+# push to do it - requires the `actions: write` permission below.
 #
 # Patch branches are discovered dynamically (origin/patch/*), so adding a
 # new patch branch is picked up automatically with no edits here.
@@ -30,6 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,3 +55,8 @@ jobs:
             }
           done
           git push origin combined --force
+
+      - name: Trigger Fork Build for combined
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run fork-build.yml --ref combined
